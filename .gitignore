@@ -1,0 +1,58 @@
+# STM32CubeIDE 项目文件
+.settings/
+Debug/
+Release/
+.cproject
+.project
+.mxproject
+
+# 构建输出
+*.o
+*.d
+*.elf
+*.map
+*.hex
+*.bin
+*.list
+*.cyclo
+*.su
+
+# 中间件构建产物
+Middlewares/Third_Party/FreeRTOS/Source/**/*.o
+Middlewares/Third_Party/FreeRTOS/Source/**/*.d
+Middlewares/Third_Party/FreeRTOS/Source/**/*.cyclo
+Middlewares/Third_Party/FreeRTOS/Source/**/*.su
+Middlewares/Third_Party/FreeRTOS/Source/**/subdir.mk
+
+# 驱动构建产物
+Drivers/**/*.o
+Drivers/**/*.d
+Drivers/**/*.cyclo
+Drivers/**/*.su
+Drivers/**/subdir.mk
+
+# Core构建产物
+Core/**/*.o
+Core/**/*.d
+Core/**/*.cyclo
+Core/**/*.su
+Core/**/subdir.mk
+
+# Makefile 生成文件
+makefile
+objects.list
+objects.mk
+sources.mk
+
+# IDE 启动配置
+*.launch
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~
