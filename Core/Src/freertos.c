@@ -220,6 +220,14 @@ void StartTask03(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+	char err_msg[20];
+	snprintf(err_msg, sizeof(err_msg), "ErrorTask%s", pcTaskName);
+	OLED_NewFrame();
+	OLED_PrintString(0, 0, err_msg, &font12x12, OLED_COLOR_NORMAL);
+	OLED_ShowFrame();
+	while(1);
+}
 /* USER CODE END Application */
 

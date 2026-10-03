@@ -44,5 +44,5 @@ uint8_t Get_Button_State(void)
 	if(Get_Add_Button_State()==1)return 2;
 	if(Get_Sw_Button_State()==1)return 1;
 	if(Get_Sub_Button_State()==1)return 0;
-	return -1;
+	return 255;
 }

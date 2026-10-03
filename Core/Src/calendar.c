@@ -307,10 +307,8 @@ void calculate_HeavenlyandEarthly(uint32_t timestamp,uint16_t year, uint8_t mont
         calendar.lunar_Earthly_month = m_index+1;
         if(compare_same_day(year,month,day,year,month,lunar_jie_date[y_index][m_index])==-1)
         {
-        	calendar.lunar_Earthly_month--;
+        	calendar.lunar_Earthly_month=(calendar.lunar_Earthly_month+11)%12;
         }
-        if(calendar.lunar_Earthly_month<0)calendar.lunar_Earthly_month+=12;
-        if(calendar.lunar_Earthly_month==12)calendar.lunar_Earthly_month-=12;
         //calendar.lunar_Heavenly_month = ((year_diff % 5)*2+calendar.lunar_Earthly_month)%10;//处理不了子月0的情况，子月偏移量应该是12而非0
         //月天干序号=(2×年干序号+(月支序号+10)mod12+2)mod10   AI给的
         calendar.lunar_Heavenly_month =(2*year_diff+(calendar.lunar_Earthly_month+10)%12 + 2)%10;
