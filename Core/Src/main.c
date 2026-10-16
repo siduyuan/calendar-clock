@@ -50,8 +50,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
-
+extern uint8_t OLEDV;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -97,9 +96,14 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  HAL_Delay(20);
-  OLED_Init();
- Calendar_Init();
+  if (HAL_GPIO_ReadPin(OLEDV_GPIO_Port, OLEDV_Pin) == GPIO_PIN_SET) {
+    HAL_Delay(20);
+    OLED_Init();
+    OLEDV = 1;
+  } else {
+    OLEDV = 0;
+  }
+  Calendar_Init();
   /* USER CODE END 2 */
 
   /* Init scheduler */

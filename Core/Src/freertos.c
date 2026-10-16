@@ -50,6 +50,7 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 uint8_t mod=0;
+uint8_t OLEDV=0;
 /* USER CODE END Variables */
 /* Definitions for TimeTask */
 osThreadId_t TimeTaskHandle;
@@ -162,6 +163,12 @@ void StartTask02(void *argument)
   /* Infinite loop */
   for(;;)
   {
+	  if(HAL_GPIO_ReadPin(OLEDV_GPIO_Port, OLEDV_Pin) == GPIO_PIN_RESET) {
+		  OLEDV = 0;
+		  osDelay(250);
+		  continue;
+	  }
+	  if(OLEDV == 0) { HAL_Delay(20); OLED_Init(); OLEDV = 1; }
 
 	  OLED_NewFrame();
 	  OLED_PrintString(2, 0, Calendar_Getdatestr(), &font15x15, OLED_COLOR_NORMAL);//日期显示
