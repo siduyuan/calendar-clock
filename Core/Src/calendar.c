@@ -1,5 +1,6 @@
 #include "calendar.h"
 #include "string.h"
+#include <stdio.h>
 
 Calendar_TypeDef calendar;
 //待办：旋钮逻辑，按钮消抖--2025.12.3  03:41

@@ -5,7 +5,7 @@ static uint8_t Get_Add_Button_State(void)
 {
     if (HAL_GPIO_ReadPin(BUTTON_PORT, ADD_PIN) == DOWN_STATE)
     {
-        osDelay(20); // 消抖确认
+        HAL_Delay(20); // 消抖确认
         if (HAL_GPIO_ReadPin(BUTTON_PORT, ADD_PIN) == DOWN_STATE)
         	return 1;
     }
@@ -16,7 +16,7 @@ static uint8_t Get_Sw_Button_State(void)
 {
     if (HAL_GPIO_ReadPin(BUTTON_PORT, SW_PIN) == DOWN_STATE)
     {
-        osDelay(40); // 消抖确认
+        HAL_Delay(40); // 消抖确认
         if (HAL_GPIO_ReadPin(BUTTON_PORT, SW_PIN) == DOWN_STATE)
         	return 1;
     }
@@ -27,7 +27,7 @@ static uint8_t Get_Sub_Button_State(void)
 {
     if (HAL_GPIO_ReadPin(BUTTON_PORT, SUB_PIN) == DOWN_STATE)
     {
-        osDelay(20); // 消抖确认
+        HAL_Delay(20); // 消抖确认
         if (HAL_GPIO_ReadPin(BUTTON_PORT, SUB_PIN) == DOWN_STATE)
         	return 1;
     }

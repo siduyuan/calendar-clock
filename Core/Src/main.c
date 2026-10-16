@@ -18,8 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "cmsis_os.h"
 #include "i2c.h"
+#include "rtc.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -29,7 +29,6 @@
 #include <font.h>
 #include "button.h"
 #include "calendar.h"
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,14 +49,16 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-extern uint8_t OLEDV;
+uint8_t OLEDV = 0;
+uint8_t mod = 0;
+uint8_t key_changed = 0;  // 按键改动标志
+volatile uint32_t rtc_total_seconds = 0;  // 开机累计秒数
+uint32_t last_rtc_seconds = 0;  // 上次RTC秒数
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -95,25 +96,11 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
-  if (HAL_GPIO_ReadPin(OLEDV_GPIO_Port, OLEDV_Pin) == GPIO_PIN_SET) {
-    HAL_Delay(20);
-    OLED_Init();
-    OLEDV = 1;
-  } else {
-    OLEDV = 0;
-  }
+
   Calendar_Init();
   /* USER CODE END 2 */
-
-  /* Init scheduler */
-  osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */
-  MX_FREERTOS_Init();
-
-  /* Start scheduler */
-  osKernelStart();
-
-  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -122,6 +109,91 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+    if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_SET ) {
+      if(OLEDV == 0){
+        HAL_Delay(20);
+        if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_SET){
+          OLED_Init();
+          OLEDV = 1;
+        }
+      }
+    } 
+    else if(OLEDV == 1){
+    OLEDV = 0;
+    }
+
+    // 1. 判断按键事件
+    uint8_t state = Get_Button_State();
+    switch(state)
+    {
+      case 0: // 减小
+        if(mod != 0) {
+          Calendar_ChangeTime(mod, -1);
+          key_changed = 1;
+        }
+        break;
+      case 1: // 模式切换
+        mod++;
+        if(mod > 6) mod = 0;
+        key_changed = 1;
+        break;
+      case 2: // 增加
+        if(mod != 0) {
+          Calendar_ChangeTime(mod, 1);
+          key_changed = 1;
+        }
+        break;
+    }
+    
+    // 2. 计算秒数差值和判断按键改动标志，刷新屏幕
+    uint32_t elapsed_seconds = rtc_total_seconds - last_rtc_seconds;
+    
+    // 3. 如果超过1秒或按键改动，刷新屏幕
+    if(elapsed_seconds >= 1 || key_changed)
+    {
+      // 更新时间
+      if(elapsed_seconds >= 1) {
+        for(uint32_t i = 0; i < elapsed_seconds; i++) {
+          Calendar_Increment();
+        }
+        last_rtc_seconds = rtc_total_seconds;
+      }
+  
+      // 刷新屏幕
+      if(OLEDV) {
+        OLED_NewFrame();
+        OLED_PrintString(2, 0, Calendar_Getdatestr(), &font15x15, OLED_COLOR_NORMAL); // 日期显示
+        OLED_PrintString(100, 0, Calendar_Getweek_daystr(), &font15x15, OLED_COLOR_NORMAL); // 星期显示
+        OLED_PrintString(20, 14, Calendar_Gettimestr(), &font16x16, OLED_COLOR_NORMAL); // 时间显示
+        
+        if(Calendar_Get_lunar_moth_leap() != 0) {
+          OLED_PrintString(2, 20, "闰", &font15x15, OLED_COLOR_NORMAL); // 闰字显示
+        }
+        OLED_PrintString(2, 38, Calendar_GetlunardateStr(), &font15x15, OLED_COLOR_NORMAL); // 农历显示
+        OLED_PrintString(2, 53, Calendar_GetFourPillarStr(), &font12x12, OLED_COLOR_NORMAL); // 干支显示
+        
+        // 如果处于模式调整状态，绘制选择框
+        if(mod) {
+          switch(mod) {
+            case 1: OLED_DrawRectangle(1, 0, 32, 16, OLED_COLOR_NORMAL); break;
+            case 2: OLED_DrawRectangle(48, 0, 17, 16, OLED_COLOR_NORMAL); break;
+            case 3: OLED_DrawRectangle(79, 0, 17, 16, OLED_COLOR_NORMAL); break;
+            case 4: OLED_DrawRectangle(18, 16, 27, 20, OLED_COLOR_NORMAL); break;
+            case 5: OLED_DrawRectangle(54, 16, 27, 20, OLED_COLOR_NORMAL); break;
+            case 6: OLED_DrawRectangle(90, 16, 27, 20, OLED_COLOR_NORMAL); break;
+          }
+        }
+        
+        OLED_ShowFrame();
+      }
+      
+      // 清除按键标志
+      key_changed = 0;
+    }
+    
+    // 短暂延时，降低CPU占用
+    HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }
@@ -134,14 +206,16 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
@@ -160,6 +234,12 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
   }
@@ -221,3 +301,9 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
+// RTC 秒中断回调函数
+void HAL_RTCEx_SecEventCallback(RTC_HandleTypeDef *hrtc)
+{
+  rtc_total_seconds++;
+}
