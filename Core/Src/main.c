@@ -100,6 +100,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   Calendar_Init();
+  OLED_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -109,20 +110,21 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
+/*
     if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_SET ) {
       if(OLEDV == 0){
         HAL_Delay(20);
         if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_SET){
           OLED_Init();
           OLEDV = 1;
+          key_changed = 1;  // 初始化后强制立即刷新一次
         }
       }
     } 
     else if(OLEDV == 1){
     OLEDV = 0;
     }
-
+*/
     // 1. 判断按键事件
     uint8_t state = Get_Button_State();
     switch(state)
@@ -161,7 +163,7 @@ int main(void)
       }
   
       // 刷新屏幕
-      if(OLEDV) {
+      //if(OLEDV) {//临时测试。
         OLED_NewFrame();
         OLED_PrintString(2, 0, Calendar_Getdatestr(), &font15x15, OLED_COLOR_NORMAL); // 日期显示
         OLED_PrintString(100, 0, Calendar_Getweek_daystr(), &font15x15, OLED_COLOR_NORMAL); // 星期显示
@@ -186,12 +188,12 @@ int main(void)
         }
         
         OLED_ShowFrame();
-      }
+      //}
       
       // 清除按键标志
       key_changed = 0;
     }
-    
+
     // 短暂延时，降低CPU占用
     HAL_Delay(10);
   }
@@ -302,8 +304,8 @@ void assert_failed(uint8_t *file, uint32_t line)
 }
 #endif /* USE_FULL_ASSERT */
 
-// RTC 秒中断回调函数
-void HAL_RTCEx_SecEventCallback(RTC_HandleTypeDef *hrtc)
+// RTC 秒中断回调函数（F1 系列回调名为 RTCEventCallback）
+void HAL_RTCEx_RTCEventCallback(RTC_HandleTypeDef *hrtc)
 {
   rtc_total_seconds++;
 }

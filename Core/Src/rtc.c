@@ -42,13 +42,21 @@ void MX_RTC_Init(void)
   */
   hrtc.Instance = RTC;
   hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
-  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_ALARM;
+  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_NONE;  // 禁止RTC输出到PC13(TAMPER)，否则闹钟匹配会导致板载LED常亮
   if (HAL_RTC_Init(&hrtc) != HAL_OK)
   {
     Error_Handler();
   }
   /* USER CODE BEGIN RTC_Init 2 */
-
+  /* 使能 RTC 秒中断：等 RTOFF=1 后再写 SECIE，确保中断使能位写入不丢失 */
+  {
+    uint32_t timeout = 0;
+    while (((hrtc.Instance->CRL & RTC_CRL_RTOFF) == 0U) && (timeout < 100000U))
+    {
+      timeout++;
+    }
+    hrtc.Instance->CRH |= RTC_CRH_SECIE;  // 使能秒中断
+  }
   /* USER CODE END RTC_Init 2 */
 
 }
