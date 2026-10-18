@@ -110,7 +110,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-/*
+
     if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_SET ) {
       if(OLEDV == 0){
         HAL_Delay(20);
@@ -124,7 +124,7 @@ int main(void)
     else if(OLEDV == 1){
     OLEDV = 0;
     }
-*/
+
     // 1. 判断按键事件
     uint8_t state = Get_Button_State();
     switch(state)
@@ -163,7 +163,7 @@ int main(void)
       }
   
       // 刷新屏幕
-      //if(OLEDV) {//临时测试。
+      if(OLEDV) {//临时测试。
         OLED_NewFrame();
         OLED_PrintString(2, 0, Calendar_Getdatestr(), &font15x15, OLED_COLOR_NORMAL); // 日期显示
         OLED_PrintString(100, 0, Calendar_Getweek_daystr(), &font15x15, OLED_COLOR_NORMAL); // 星期显示
@@ -188,7 +188,7 @@ int main(void)
         }
         
         OLED_ShowFrame();
-      //}
+      }
       
       // 清除按键标志
       key_changed = 0;
