@@ -85,7 +85,7 @@ void OLED_Init()
 
   OLED_SendCmd(0x81);
 
-  OLED_SendCmd(0xDF);
+  OLED_SendCmd(0x9F);  /* 亮度 191/255 ≈ 75% */
   OLED_SendCmd(0xA1);
 
   OLED_SendCmd(0xA6);
@@ -181,6 +181,40 @@ void OLED_ShowFrame()
     OLED_SendCmd(0x10);     // 设置列地址高4位
     memcpy(sendBuffer + 1, OLED_GRAM[i], OLED_COLUMN);
     OLED_Send(sendBuffer, OLED_COLUMN + 1);
+  }
+}
+
+/**
+ * @brief 局部刷新显存指定区域到屏幕
+ * @param start_col 起始列(0-127)
+ * @param start_page 起始页(0-7)
+ * @param col_len 列长度(每页发送的字节数)
+ * @param page_count 页数(向下覆盖的页数)
+ * @return None
+ * @note 仅将 OLED_GRAM 中指定矩形区域的字节发送到屏幕，
+ *       配合 OLED_NewFrame() 全清后逐区域绘制，可实现阶梯式局部刷新
+ */
+void OLED_ShowFrameRegion(uint8_t start_col, uint8_t start_page, uint8_t col_len, uint8_t page_count)
+{
+  static uint8_t sendBuffer[OLED_COLUMN + 1];
+  sendBuffer[0] = 0x40;
+
+  // 越界保护：限制区域不超出屏幕
+  if (start_col >= OLED_COLUMN || start_page >= OLED_PAGE)
+    return;
+  if (col_len > (OLED_COLUMN - start_col))
+    col_len = OLED_COLUMN - start_col;
+  if (page_count > (OLED_PAGE - start_page))
+    page_count = OLED_PAGE - start_page;
+
+  for (uint8_t i = 0; i < page_count; i++)
+  {
+    uint8_t page = start_page + i;
+    OLED_SendCmd(0xB0 + page);                          // 设置页地址
+    OLED_SendCmd(0x00 + (start_col & 0x0F));            // 设置列地址低4位
+    OLED_SendCmd(0x10 + ((start_col >> 4) & 0x0F));     // 设置列地址高4位
+    memcpy(sendBuffer + 1, &OLED_GRAM[page][start_col], col_len);
+    OLED_Send(sendBuffer, col_len + 1);
   }
 }
 

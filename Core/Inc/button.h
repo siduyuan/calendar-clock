@@ -19,7 +19,13 @@ extern "C" {
 #define DOWN_STATE 0
 #define UP_STATE 1
 
-uint8_t Get_Button_State(void);
+//按键事件位定义（EXTI 中断回调置位）
+#define KEY_ADD  0x01
+#define KEY_SW   0x02
+#define KEY_SUB  0x04
+
+//EXTI 中断置位的按键事件标志（ISR 中修改，必须 volatile）
+extern volatile uint8_t key_event;
 
 
 

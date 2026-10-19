@@ -42,6 +42,8 @@ void MX_RTC_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
+void RTC_Alarm_Config(RTC_HandleTypeDef *hrtc);  /* 使能闹钟中断+EXTI17 并启动 1 秒心跳 */
+
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus
