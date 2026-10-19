@@ -85,7 +85,7 @@ void OLED_Init()
 
   OLED_SendCmd(0x81);
 
-  OLED_SendCmd(0x9F);  /* 亮度 191/255 ≈ 75% */
+  OLED_SendCmd(0x9F);  /* 亮度 62.5% */
   OLED_SendCmd(0xA1);
 
   OLED_SendCmd(0xA6);
