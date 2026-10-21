@@ -1,6 +1,7 @@
 #include "calendar.h"
 #include "string.h"
 #include <stdio.h>
+#include "timestamp_flash.h"
 
 Calendar_TypeDef calendar;
 //待办：旋钮逻辑，按钮消抖--2025.12.3  03:41
@@ -339,6 +340,13 @@ void calculate_HeavenlyandEarthly(uint32_t timestamp,uint16_t year, uint8_t mont
 void Calendar_Init(void) {
     // 设置默认时间：2005年8月21日0时0分0秒
     Calendar_SetTime(default_time);
+    // 有掉电前的备份时间戳则恢复，避免每次从默认时间重新调整（备份为整点粒度，误差≤1小时）
+    uint32_t last_ts = 0;
+    if (TS_ReadLast(&last_ts) == TS_OK) {
+        calendar.timestamp = last_ts;
+        calendar.refresh_flag = 1;
+        Calendar_Refresh();
+    }
     //乙酉 甲申 丁丑 庚子
 }
 

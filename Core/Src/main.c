@@ -28,6 +28,7 @@
 #include <font.h>
 #include "button.h"
 #include "calendar.h"
+#include "timestamp_flash.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -65,6 +66,7 @@ uint32_t last_key_rtc_seconds = 0;  // 最近一次按键事件对应的累计�
 extern TIM_HandleTypeDef htim4;  // 系统滴答由 TIM4 维护，STOP 前后需手动管理
 static uint8_t last_draw_hour = 0xFF;   // 最近一次全量刷新的小时（整点全量刷新判定）
 static uint8_t last_draw_minute = 0xFF; // 最近一次刷新（含局部）的分钟（整分局部刷新判定）
+static uint8_t last_ts_hour = 0xFF;     // 最近一次写入备份区的小时（每小时写一次时间戳判定）
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -111,12 +113,16 @@ int main(void)
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
 
+  TS_Init();// 初始化时间戳存储库
   Calendar_Init();
   OLED_Init();
   RTC_Alarm_Config(&hrtc);  /* 一次性配置闹钟中断+EXTI17并以闹钟启动 1 秒心跳 */
   Display_FullRefresh();    /* 开机整帧绘制+整屏刷新，建立基础画布 */
   last_draw_hour = calendar.hour;
   last_draw_minute = calendar.minute;
+  last_ts_hour = calendar.hour;  // 备份小时基准：当前小时不再写，下个整点才写
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -211,8 +217,13 @@ int main(void)
       key_changed = 0;
     }
 
-    // 闹钟不在每循环重装：每 1s 由回调自增 next_alarm_target 并写入 ALR（见回调），
-    // 主循环只需决定何时进入/退出 STOP 即可，无需触碰 RTC 寄存器。
+    // 4. 每小时写一次时间戳到备份区：小时变更即写，掉电后用于恢复时间/估算供电时长。
+    //    写满后库内部自动整页擦除重来，正常使用无需理会。放在 STOP 决策之前执行。
+    if (calendar.hour != last_ts_hour)
+    {
+      last_ts_hour = calendar.hour;  // 无论写成败都推进基准，避免每秒重试
+      TS_Write(calendar.timestamp);
+    }
 
     // 距上次按键中断不足 5 秒时保持运行（短延时快速响应连续按键），超过才进入 STOP
     if ((rtc_total_seconds - last_key_rtc_seconds) >= 5U)
