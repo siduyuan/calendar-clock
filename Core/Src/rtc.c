@@ -21,8 +21,8 @@
 #include "rtc.h"
 
 /* USER CODE BEGIN 0 */
-extern volatile uint32_t rtc_total_seconds;     /* main.c 定义：开机累计秒数（闹钟回调自增） */
-static volatile uint32_t next_alarm_target = 0; /* 下一次闹钟目标值（回调自增并直接写 ALR） */
+volatile uint32_t rtc_total_seconds = 0;  /* 开机累计秒数（闹钟回调自增，main.c 经 extern 消费） */
+static volatile uint32_t last_alarm_value = 0;  /* 上次写入 ALR 的值；回调读 CNT 后防御比较用（正常路径不触发） */
 
 /* 最小写入：把 target 写入 ALR。不读 CNT、不清 ALRF（由 HAL 中断服务在回调后统一清）。
    关键点：F1 的 RTC 寄存器受写保护，写入前必须置 CRL.CNF 进入配置模式，否则被静默忽略。 */
@@ -42,13 +42,13 @@ static void RTC_WriteAlarm(RTC_HandleTypeDef *hrtc, uint32_t target)
   }
 }
 
-/* 一次性配置：使能闹钟中断 + EXTI17 唤醒线 + NVIC + 装载首次闹钟。
+/* 一次性配置：使能闹钟中断 + EXTI17 唤醒线 + 装载首次闹钟。
+   RTC 时钟使能与 NVIC 优先级已由 HAL_RTC_MspInit（MX_RTC_Init 内部）完成，此处不重复。
    启动时影子寄存器仍与 RTC 核心同步，允许此处读一次 CNT 作为初始基准（非运行期路径）。 */
 void RTC_Alarm_Config(RTC_HandleTypeDef *hrtc)
 {
   RTC_TypeDef *rtc = hrtc->Instance;
 
-  __HAL_RCC_RTC_ENABLE();
   __HAL_RTC_ALARM_ENABLE_IT(hrtc, RTC_IT_ALRA);
 
   /* 手动使能 EXTI Line 17（HAL/CubeMX 不会自动配置，唤醒 STOP 的关键） */
@@ -56,12 +56,9 @@ void RTC_Alarm_Config(RTC_HandleTypeDef *hrtc)
   EXTI->RTSR |= (1UL << 17);
   EXTI->PR    = (1UL << 17);
 
-  HAL_NVIC_SetPriority(RTC_Alarm_IRQn, 1, 0);
-  HAL_NVIC_EnableIRQ(RTC_Alarm_IRQn);
-
-  /* 初始基准：当前秒 + 1 */
-  next_alarm_target = (((uint32_t)rtc->CNTH << 16U) | (uint32_t)rtc->CNTL) + 1U;
-  RTC_WriteAlarm(hrtc, next_alarm_target);
+  /* 初始基准：当前秒 + 1（启动期读一次 CNT，影子寄存器刚完成同步，非运行期路径） */
+  last_alarm_value = (((uint32_t)rtc->CNTH << 16U) | (uint32_t)rtc->CNTL) + 1U;
+  RTC_WriteAlarm(hrtc, last_alarm_value);
 }
 /* USER CODE END 0 */
 
@@ -141,12 +138,41 @@ void HAL_RTC_MspDeInit(RTC_HandleTypeDef* rtcHandle)
 /* USER CODE BEGIN 1 */
 /**
   * @brief  RTC 闹钟 A 事件回调（1 秒心跳，每秒触发一次）
-  * @note   累计开机秒数并装载下一秒闹钟；进入 STOP 模式时同样由它经 EXTI17 唤醒。
+  * @note   设计：闹钟触发后先等影子寄存器同步（清 RSF → 轮询置位，1~2 RTCCLK ≈ 30~61µs，
+  *         LSI 32768Hz），此时 CNT 必已越过触发边界（= 上次闹钟值 + 1），读 CNT 直接写
+  *         ALR = CNT，无需 +1。ALRF/EXTI17 由 HAL_RTC_AlarmIRQHandler 在回调返回后统一清，
+  *         回调内不清标志。进入 STOP 模式时同样由本回调经 EXTI17 唤醒。
   */
 void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
-  rtc_total_seconds++;              /* 累计秒数（volatile，主循环差值驱动日历） */
-  next_alarm_target += 1U;          /* 下一次目标在软件里自增（不读影子寄存器，免疫 STOP 陈旧值） */
-  RTC_WriteAlarm(hrtc, next_alarm_target);  /* 直接写硬件；闹钟刚触发，写时序安全 */
+  RTC_TypeDef *rtc = hrtc->Instance;
+  uint16_t high1, high2, low;
+  uint32_t cnt;
+
+  /* 1. 影子寄存器同步（STOP 唤醒后首读 CNT 必须先做，避免陈旧值）。
+        与 HAL_RTC_WaitForSynchro 同手法：清 RSF → 轮询 CRL.RSF 置位 */
+  CLEAR_BIT(rtc->CRL, RTC_FLAG_RSF);
+  while ((rtc->CRL & RTC_FLAG_RSF) == RESET) {}
+
+  /* 2. 双读法取 CNT：CNTH/CNTL 各 16 位，读低再读高可能跨位回卷，需二次核对高位 */
+  do {
+    high1 = rtc->CNTH;
+    low   = rtc->CNTL;
+    high2 = rtc->CNTH;
+  } while (high1 != high2);
+  cnt = ((uint32_t)high1 << 16U) | low;
+
+  /* 3. 防御：正常同步后 CNT 必 == 上次闹钟值 + 1；若读到 <= 上次值（边界竞态、同步未越过），
+        强制前推一位，避免写回旧值导致闹钟永不触发（心跳打停）。正常路径不触发。 */
+  if (cnt <= last_alarm_value) {
+    cnt = (uint32_t)last_alarm_value + 1U;
+  }
+  last_alarm_value = cnt;
+
+  /* 4. 写 ALR = CNT（复用 RTC_WriteAlarm：等 RTOFF → CNF → 写 ALRH/ALRL → 退 CNF） */
+  RTC_WriteAlarm(hrtc, cnt);
+
+  /* 5. 累计开机秒数（volatile，主循环差值驱动日历） */
+  rtc_total_seconds++;
 }
 /* USER CODE END 1 */

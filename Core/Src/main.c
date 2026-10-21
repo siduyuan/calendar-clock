@@ -59,7 +59,7 @@
 uint8_t OLEDV = 0;
 uint8_t mod = 0;
 uint8_t key_changed = 0;  // 按键改动标志
-volatile uint32_t rtc_total_seconds = 0;  // 开机累计秒数
+extern volatile uint32_t rtc_total_seconds;  // 定义在 rtc.c（闹钟回调自增），主循环差值驱动日历
 
 uint32_t last_rtc_seconds = 0;  // 上次RTC秒数
 uint32_t last_key_rtc_seconds = 0;  // 最近一次按键事件对应的累计秒数（控制STOP进入，主循环逻辑，非按键逻辑）
