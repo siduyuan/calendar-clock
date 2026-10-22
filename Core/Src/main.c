@@ -46,6 +46,12 @@
 #define TIME_MS_COL     56 // 分+秒区域起始列（MM:SS 五字 → 列56-115）
 #define TIME_MS_LEN     60 // 分+秒区域列长度
 
+// 考研模式布局（时间左对齐，右侧留空给剩余天数）
+#define TIME_EXAM_COL     2   // 考研模式时间起始列（HH:MM:SS → 列2-97）
+#define TIME_EXAM_SEC_COL 74  // 考研模式秒区域起始列（SS → 列74-97）
+#define TIME_EXAM_MS_COL  38  // 考研模式分+秒区域起始列（MM:SS → 列38-97）
+#define EXAM_DAY_RIGHT    127 // 剩余天数右对齐右侧列（0起始，屏幕宽128）
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -61,6 +67,11 @@ uint8_t mod = 0;
 uint8_t key_changed = 0;  // 按键改动标志
 extern volatile uint32_t rtc_total_seconds;  // 定义在 rtc.c（闹钟回调自增），主循环差值驱动日历
 
+uint8_t exam_mode = 1;  // 考研模式开关：1=启用 0=关闭（直接改此变量即可切换）
+// 考研目标时间戳：2026-12-19 00:00:00。日历内部为墙钟时间戳（date_to_timestamp 无时区解释），
+// 故取与设备一致的无时区数值 1797638400；若日后改用真实 UTC+8 时间戳则为 1797609600
+uint32_t exam_target_ts = 1797638400UL;
+
 uint32_t last_rtc_seconds = 0;  // 上次RTC秒数
 uint32_t last_key_rtc_seconds = 0;  // 最近一次按键事件对应的累计秒数（控制STOP进入，主循环逻辑，非按键逻辑）
 extern TIM_HandleTypeDef htim4;  // 系统滴答由 TIM4 维护，STOP 前后需手动管理
@@ -74,6 +85,7 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 void SystemClock_ResetPLL(void);  // STOP 唤醒后轻量恢复，不重配 RTC（用户代码，防被重生成清掉）
 void Display_FullRefresh(void);   // 全量重绘整帧并整屏刷新（开机/整点/按键改动时调用）
+void Display_DrawExamDays(void);  // 绘制考研剩余天数（右对齐：xx 一行 + day 一行）
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -202,14 +214,16 @@ int main(void)
         }
         else if(calendar.minute != last_draw_minute) {
           // ===== 整分：覆盖分+秒区域（MM:SS，含中间冒号）并局部刷新 =====
-          OLED_PrintString(TIME_MS_COL, 14, Calendar_Gettimestr() + 3, &font16x16, OLED_COLOR_NORMAL);
-          OLED_ShowFrameRegion(TIME_MS_COL, TIME_REF_PAGE, TIME_MS_LEN, TIME_REF_PAGES);
+          uint8_t ms_col = exam_mode ? TIME_EXAM_MS_COL : TIME_MS_COL;
+          OLED_PrintString(ms_col, 14, Calendar_Gettimestr() + 3, &font16x16, OLED_COLOR_NORMAL);
+          OLED_ShowFrameRegion(ms_col, TIME_REF_PAGE, TIME_MS_LEN, TIME_REF_PAGES);
           last_draw_minute = calendar.minute;
         }
         else {
           // ===== 每秒：覆盖秒区域（SS）并局部刷新 =====
-          OLED_PrintString(TIME_SEC_COL, 14, Calendar_Gettimestr() + 6, &font16x16, OLED_COLOR_NORMAL);
-          OLED_ShowFrameRegion(TIME_SEC_COL, TIME_REF_PAGE, TIME_SEC_LEN, TIME_REF_PAGES);
+          uint8_t sec_col = exam_mode ? TIME_EXAM_SEC_COL : TIME_SEC_COL;
+          OLED_PrintString(sec_col, 14, Calendar_Gettimestr() + 6, &font16x16, OLED_COLOR_NORMAL);
+          OLED_ShowFrameRegion(sec_col, TIME_REF_PAGE, TIME_SEC_LEN, TIME_REF_PAGES);
         }
       }
      
@@ -348,12 +362,27 @@ void SystemClock_ResetPLL(void)
   */
 void Display_FullRefresh(void)
 {
+  // 到达/超过考研目标时间：退出考研模式恢复普通布局。
+  // OLED_NewFrame() 会把整帧清成全黑，本次刷新即按正常模式（居中时间、无天数）整帧重建，无需手动涂黑
+  if (exam_mode && calendar.timestamp >= exam_target_ts) {
+    exam_mode = 0;
+  }
+
   OLED_NewFrame();
   OLED_PrintString(2, 0, Calendar_Getdatestr(), &font15x15, OLED_COLOR_NORMAL); // 日期显示
   OLED_PrintString(100, 0, Calendar_Getweek_daystr(), &font15x15, OLED_COLOR_NORMAL); // 星期显示
-  OLED_PrintString(20, 14, Calendar_Gettimestr(), &font16x16, OLED_COLOR_NORMAL); // 时间显示
 
-  if(Calendar_Get_lunar_moth_leap() != 0) {
+  if(exam_mode) {
+    // 考研模式：时分秒左对齐，右侧空隙显示剩余天数（xx 一行 + day 一行）
+    OLED_PrintString(TIME_EXAM_COL, 14, Calendar_Gettimestr(), &font16x16, OLED_COLOR_NORMAL);
+    Display_DrawExamDays();
+  }
+  else {
+    OLED_PrintString(20, 14, Calendar_Gettimestr(), &font16x16, OLED_COLOR_NORMAL); // 时间显示（居中）
+  }
+
+  // 闰字占用列2-16，考研模式时间左移后与该区域重叠，故不显示
+  if(!exam_mode && Calendar_Get_lunar_moth_leap() != 0) {
     OLED_PrintString(2, 20, "闰", &font15x15, OLED_COLOR_NORMAL); // 闰字显示
   }
   OLED_PrintString(2, 38, Calendar_GetlunardateStr(), &font15x15, OLED_COLOR_NORMAL); // 农历显示
@@ -365,13 +394,56 @@ void Display_FullRefresh(void)
       case 1: OLED_DrawRectangle(1, 0, 32, 16, OLED_COLOR_NORMAL); break;
       case 2: OLED_DrawRectangle(48, 0, 17, 16, OLED_COLOR_NORMAL); break;
       case 3: OLED_DrawRectangle(79, 0, 17, 16, OLED_COLOR_NORMAL); break;
-      case 4: OLED_DrawRectangle(18, 16, 27, 20, OLED_COLOR_NORMAL); break;
-      case 5: OLED_DrawRectangle(54, 16, 27, 20, OLED_COLOR_NORMAL); break;
-      case 6: OLED_DrawRectangle(90, 16, 27, 20, OLED_COLOR_NORMAL); break;
+      // 时间调整框（时分秒）跟随考研模式的左对齐布局整体左移18列
+      case 4: OLED_DrawRectangle(exam_mode ? 0 : 18, 16, 27, 20, OLED_COLOR_NORMAL); break;
+      case 5: OLED_DrawRectangle(exam_mode ? 36 : 54, 16, 27, 20, OLED_COLOR_NORMAL); break;
+      case 6: OLED_DrawRectangle(exam_mode ? 72 : 90, 16, 27, 20, OLED_COLOR_NORMAL); break;
     }
   }
 
   OLED_ShowFrame();
+}
+
+/**
+ * @brief  绘制考研剩余天数（右对齐：xx 一行 + day 一行，12×6 字号 afont12x6）
+ * @note   天数 = (目标时间戳 - 当前时间戳) 向上取整到天；到达/超过目标后显示 0。
+ *         天数字符串无前导零；"xx" 与 "day" 共用右对齐边 EXAM_DAY_RIGHT。
+ *         天数仅在跨零点变化，由整点全量刷新覆盖，无需参与秒/分局部刷新。
+ * @retval None
+ */
+void Display_DrawExamDays(void)
+{
+  uint32_t days;
+  char num[6];
+  uint8_t len = 0;
+
+  if (calendar.timestamp >= exam_target_ts) {
+    days = 0;   
+  }
+  else {
+    days = (exam_target_ts - calendar.timestamp + 86399UL) / 86400UL;  // 向上取整
+  }
+
+  // 十进制无前导零转换
+  if (days == 0) {
+    num[len++] = '0';
+  }
+  else {
+    char tmp[6];
+    uint8_t t = 0;
+    while (days) {
+      tmp[t++] = '0' + (uint8_t)(days % 10);
+      days /= 10;
+    }
+    while (t) {
+      num[len++] = tmp[--t];
+    }
+  }
+  num[len] = '\0';
+
+  // 右对齐：数字每字6px，末字右边落在 EXAM_DAY_RIGHT
+  OLED_PrintASCIIString(EXAM_DAY_RIGHT + 1 - (uint8_t)(len * 6), 14, num, &afont12x6, OLED_COLOR_NORMAL);
+  OLED_PrintASCIIString(EXAM_DAY_RIGHT + 1 - 18, 26, "day", &afont12x6, OLED_COLOR_NORMAL); // "day" 3字×6px
 }
 
 /* USER CODE END 4 */
